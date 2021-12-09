@@ -265,7 +265,7 @@ else:
         except AttributeError:
             continue
 
-_generatorType = type((y for y in range(1)))
+_generatorType = type(iter(range(1)))
 
 def _xml_escape(data):
     """Escape &, <, >, ", ', etc. in a string of data."""
@@ -420,7 +420,7 @@ class ParseException(ParseBaseException):
         if depth > 0:
             callers = inspect.getinnerframes(exc.__traceback__, context=depth)
             seen = set()
-            for i, ff in enumerate(callers[-depth:]):
+            for ff in callers[-depth:]:
                 frm = ff[0]
 
                 f_self = frm.f_locals.get('self', None)
@@ -567,7 +567,7 @@ class ParseResults(object):
                 self.__toklist = list(toklist)
             else:
                 self.__toklist = [toklist]
-            self.__tokdict = dict()
+            self.__tokdict = {}
 
         if name is not None and name:
             if not modal:
@@ -593,11 +593,10 @@ class ParseResults(object):
     def __getitem__(self, i):
         if isinstance(i, (int, slice)):
             return self.__toklist[i]
+        if i not in self.__accumNames:
+            return self.__tokdict[i][-1][0]
         else:
-            if i not in self.__accumNames:
-                return self.__tokdict[i][-1][0]
-            else:
-                return ParseResults([v[0] for v in self.__tokdict[i]])
+            return ParseResults([v[0] for v in self.__tokdict[i]])
 
     def __setitem__(self, k, v, isinstance=isinstance):
         if isinstance(v, _ParseResultsWithOffset):
@@ -742,16 +741,12 @@ class ParseResults(object):
                 args = (args[0], v)
             else:
                 raise TypeError("pop() got an unexpected keyword argument '%s'" % k)
-        if (isinstance(args[0], int)
-                or len(args) == 1
-                or args[0] in self):
-            index = args[0]
-            ret = self[index]
-            del self[index]
-            return ret
-        else:
-            defaultvalue = args[1]
-            return defaultvalue
+        if not isinstance(args[0], int) and len(args) != 1 and args[0] not in self:
+            return args[1]
+        index = args[0]
+        ret = self[index]
+        del self[index]
+        return ret
 
     def get(self, key, defaultValue=None):
         """
@@ -933,13 +928,12 @@ class ParseResults(object):
             item_fn = self.iteritems
 
         def toItem(obj):
-            if isinstance(obj, ParseResults):
-                if obj.haskeys():
-                    return obj.asDict()
-                else:
-                    return [toItem(v) for v in obj]
-            else:
+            if not isinstance(obj, ParseResults):
                 return obj
+            if obj.haskeys():
+                return obj.asDict()
+            else:
+                return [toItem(v) for v in obj]
 
         return dict((k, toItem(v)) for k, v in item_fn())
 
@@ -960,8 +954,7 @@ class ParseResults(object):
         """
         nl = "\n"
         out = []
-        namedItems = dict((v[1], k) for (k, vlist) in self.__tokdict.items()
-                          for v in vlist)
+        namedItems = {v[1]: k for (k, vlist) in self.__tokdict.items() for v in vlist}
         nextLevelIndent = indent + "  "
 
         # collapse out indents if formatting is not desired
@@ -973,9 +966,8 @@ class ParseResults(object):
         selfTag = None
         if doctag is not None:
             selfTag = doctag
-        else:
-            if self.__name:
-                selfTag = self.__name
+        elif self.__name:
+            selfTag = self.__name
 
         if not selfTag:
             if namedItemsOnly:
@@ -998,10 +990,7 @@ class ParseResults(object):
                                       nextLevelIndent,
                                       formatted)]
             else:
-                # individual token, see if there is a name for it
-                resTag = None
-                if i in namedItems:
-                    resTag = namedItems[i]
+                resTag = namedItems.get(i)
                 if not resTag:
                     if namedItemsOnly:
                         continue
@@ -1084,7 +1073,6 @@ class ParseResults(object):
             - year: 12
         """
         out = []
-        NL = '\n'
         if include_list:
             out.append(indent + _ustr(self.asList()))
         else:
@@ -1093,6 +1081,7 @@ class ParseResults(object):
         if full:
             if self.haskeys():
                 items = sorted((str(k), v) for k, v in self.items())
+                NL = '\n'
                 for k, v in items:
                     if out:
                         out.append(NL)
@@ -1167,10 +1156,7 @@ class ParseResults(object):
         self.__tokdict, par, inAccumNames, self.__name = state[1]
         self.__accumNames = {}
         self.__accumNames.update(inAccumNames)
-        if par is not None:
-            self.__parent = wkref(par)
-        else:
-            self.__parent = None
+        self.__parent = wkref(par) if par is not None else None
 
     def __getnewargs__(self):
         return self.__toklist, self.__name, self.__asList, self.__modal
@@ -1313,23 +1299,20 @@ def _trim_arity(func, maxargs=2):
     def wrapper(*args):
         while 1:
             try:
-                ret = func(*args[limit[0]:])
                 foundArity[0] = True
-                return ret
+                return func(*args[limit[0]:])
             except TypeError:
-                # re-raise TypeErrors if they did not come from our arity testing
                 if foundArity[0]:
                     raise
-                else:
+                try:
+                    tb = sys.exc_info()[-1]
+                    if extract_tb(tb, limit=2)[-1][:2] != pa_call_line_synth:
+                        raise
+                finally:
                     try:
-                        tb = sys.exc_info()[-1]
-                        if not extract_tb(tb, limit=2)[-1][:2] == pa_call_line_synth:
-                            raise
-                    finally:
-                        try:
-                            del tb
-                        except NameError:
-                            pass
+                        del tb
+                    except NameError:
+                        pass
 
                 if limit[0] <= maxargs:
                     limit[0] += 1
@@ -1398,7 +1381,7 @@ class ParserElement(object):
         return tb
 
     def __init__(self, savelist=False):
-        self.parseAction = list()
+        self.parseAction = []
         self.failAction = None
         # ~ self.name = "<unknown>"  # don't define self.name, let subclasses try/except upcall
         self.strRepr = None
@@ -1409,7 +1392,7 @@ class ParserElement(object):
         self.copyDefaultWhiteChars = True
         self.mayReturnEmpty = False # used when checking for left-recursion
         self.keepTabs = False
-        self.ignoreExprs = list()
+        self.ignoreExprs = []
         self.debug = False
         self.streamlined = False
         self.mayIndexError = True # used to optimize exception handling for subclasses that don't advance parse index
@@ -1618,9 +1601,9 @@ class ParserElement(object):
             exprsFound = False
             for e in self.ignoreExprs:
                 try:
+                    exprsFound = True
                     while 1:
                         loc, dummy = e._parse(instring, loc)
-                        exprsFound = True
                 except ParseException:
                     pass
         return loc
@@ -1645,10 +1628,10 @@ class ParserElement(object):
 
     # ~ @profile
     def _parseNoCache(self, instring, loc, doActions=True, callPreParse=True):
-        TRY, MATCH, FAIL = 0, 1, 2
         debugging = (self.debug)  # and doActions)
 
         if debugging or self.failAction:
+            TRY, MATCH, FAIL = 0, 1, 2
             # ~ print ("Match", self, "at loc", loc, "(%d, %d)" % (lineno(loc, instring), col(loc, instring)))
             if self.debugActions[TRY]:
                 self.debugActions[TRY](instring, loc, self)
@@ -1724,10 +1707,8 @@ class ParserElement(object):
                                                   self.resultsName,
                                                   asList=self.saveAsList and isinstance(tokens, (ParseResults, list)),
                                                   modal=self.modalResults)
-        if debugging:
-            # ~ print ("Matched", self, "->", retTokens.asList())
-            if self.debugActions[MATCH]:
-                self.debugActions[MATCH](instring, tokensStart, loc, self, retTokens)
+        if debugging and self.debugActions[MATCH]:
+            self.debugActions[MATCH](instring, tokensStart, loc, self, retTokens)
 
         return loc, retTokens
 
@@ -1948,11 +1929,10 @@ class ParserElement(object):
         except ParseBaseException as exc:
             if ParserElement.verbose_stacktrace:
                 raise
-            else:
-                # catch and re-raise exception from here, clearing out pyparsing internal stack trace
-                if getattr(exc, '__traceback__', None) is not None:
-                    exc.__traceback__ = self._trim_traceback(exc.__traceback__)
-                raise exc
+            # catch and re-raise exception from here, clearing out pyparsing internal stack trace
+            if getattr(exc, '__traceback__', None) is not None:
+                exc.__traceback__ = self._trim_traceback(exc.__traceback__)
+            raise exc
         else:
             return tokens
 
@@ -2024,11 +2004,10 @@ class ParserElement(object):
         except ParseBaseException as exc:
             if ParserElement.verbose_stacktrace:
                 raise
-            else:
-                # catch and re-raise exception from here, clearing out pyparsing internal stack trace
-                if getattr(exc, '__traceback__', None) is not None:
-                    exc.__traceback__ = self._trim_traceback(exc.__traceback__)
-                raise exc
+            # catch and re-raise exception from here, clearing out pyparsing internal stack trace
+            if getattr(exc, '__traceback__', None) is not None:
+                exc.__traceback__ = self._trim_traceback(exc.__traceback__)
+            raise exc
 
     def transformString(self, instring):
         """
@@ -2072,11 +2051,10 @@ class ParserElement(object):
         except ParseBaseException as exc:
             if ParserElement.verbose_stacktrace:
                 raise
-            else:
-                # catch and re-raise exception from here, clearing out pyparsing internal stack trace
-                if getattr(exc, '__traceback__', None) is not None:
-                    exc.__traceback__ = self._trim_traceback(exc.__traceback__)
-                raise exc
+            # catch and re-raise exception from here, clearing out pyparsing internal stack trace
+            if getattr(exc, '__traceback__', None) is not None:
+                exc.__traceback__ = self._trim_traceback(exc.__traceback__)
+            raise exc
 
     def searchString(self, instring, maxMatches=_MAX_INT):
         """
@@ -2104,11 +2082,10 @@ class ParserElement(object):
         except ParseBaseException as exc:
             if ParserElement.verbose_stacktrace:
                 raise
-            else:
-                # catch and re-raise exception from here, clearing out pyparsing internal stack trace
-                if getattr(exc, '__traceback__', None) is not None:
-                    exc.__traceback__ = self._trim_traceback(exc.__traceback__)
-                raise exc
+            # catch and re-raise exception from here, clearing out pyparsing internal stack trace
+            if getattr(exc, '__traceback__', None) is not None:
+                exc.__traceback__ = self._trim_traceback(exc.__traceback__)
+            raise exc
 
     def split(self, instring, maxsplit=_MAX_INT, includeSeparators=False):
         """
@@ -2407,9 +2384,7 @@ class ParserElement(object):
                                                                                 '... [{0}]'.format(len(key))
                                                                                 if len(key) > 5 else ''))
 
-        # clip to 2 elements
-        ret = self * tuple(key[:2])
-        return ret
+        return self * tuple(key[:2])
 
     def __call__(self, name=None):
         """
@@ -2578,11 +2553,10 @@ class ParserElement(object):
         except ParseBaseException as exc:
             if ParserElement.verbose_stacktrace:
                 raise
-            else:
-                # catch and re-raise exception from here, clearing out pyparsing internal stack trace
-                if getattr(exc, '__traceback__', None) is not None:
-                    exc.__traceback__ = self._trim_traceback(exc.__traceback__)
-                raise exc
+            # catch and re-raise exception from here, clearing out pyparsing internal stack trace
+            if getattr(exc, '__traceback__', None) is not None:
+                exc.__traceback__ = self._trim_traceback(exc.__traceback__)
+            raise exc
 
     def __eq__(self, other):
         if self is other:
@@ -2603,7 +2577,7 @@ class ParserElement(object):
         return self == other
 
     def __rne__(self, other):
-        return not (self == other)
+        return self != other
 
     def matches(self, testString, parseAll=True):
         """
@@ -2765,13 +2739,12 @@ class ParserElement(object):
                 if postParse is not None:
                     try:
                         pp_value = postParse(t, result)
-                        if pp_value is not None:
-                            if isinstance(pp_value, ParseResults):
-                                out.append(pp_value.dump())
-                            else:
-                                out.append(str(pp_value))
-                        else:
+                        if pp_value is None:
                             out.append(result.dump())
+                        elif isinstance(pp_value, ParseResults):
+                            out.append(pp_value.dump())
+                        else:
+                            out.append(str(pp_value))
                     except Exception as e:
                         out.append(result.dump(full=fullDump))
                         out.append("{0} failed: {1}: {2}".format(postParse.__name__, type(e).__name__, e))
@@ -2958,13 +2931,15 @@ class Keyword(Token):
                          or instring[loc - 1].upper() not in self.identChars)):
                 return loc + self.matchLen, self.match
 
-        else:
-            if instring[loc] == self.firstMatchChar:
-                if ((self.matchLen == 1 or instring.startswith(self.match, loc))
-                        and (loc >= len(instring) - self.matchLen
-                             or instring[loc + self.matchLen] not in self.identChars)
-                        and (loc == 0 or instring[loc - 1] not in self.identChars)):
-                    return loc + self.matchLen, self.match
+        elif instring[loc] == self.firstMatchChar and (
+            (self.matchLen == 1 or instring.startswith(self.match, loc))
+            and (
+                loc >= len(instring) - self.matchLen
+                or instring[loc + self.matchLen] not in self.identChars
+            )
+            and (loc == 0 or instring[loc - 1] not in self.identChars)
+        ):
+            return loc + self.matchLen, self.match
 
         raise ParseException(instring, loc, self.errmsg, self)
 
@@ -3160,11 +3135,7 @@ class Word(Token):
 
         self.minLen = min
 
-        if max > 0:
-            self.maxLen = max
-        else:
-            self.maxLen = _MAX_INT
-
+        self.maxLen = max if max > 0 else _MAX_INT
         if exact > 0:
             self.maxLen = exact
             self.minLen = exact
@@ -3589,11 +3560,7 @@ class CharsNotIn(Token):
 
         self.minLen = min
 
-        if max > 0:
-            self.maxLen = max
-        else:
-            self.maxLen = _MAX_INT
-
+        self.maxLen = max if max > 0 else _MAX_INT
         if exact > 0:
             self.maxLen = exact
             self.minLen = exact
@@ -3678,11 +3645,7 @@ class White(Token):
 
         self.minLen = min
 
-        if max > 0:
-            self.maxLen = max
-        else:
-            self.maxLen = _MAX_INT
-
+        self.maxLen = max if max > 0 else _MAX_INT
         if exact > 0:
             self.maxLen = exact
             self.minLen = exact
@@ -3777,15 +3740,12 @@ class LineEnd(_PositionToken):
         self.errmsg = "Expected end of line"
 
     def parseImpl(self, instring, loc, doActions=True):
-        if loc < len(instring):
-            if instring[loc] == "\n":
-                return loc + 1, "\n"
-            else:
-                raise ParseException(instring, loc, self.errmsg, self)
-        elif loc == len(instring):
-            return loc + 1, []
-        else:
+        if loc < len(instring) and instring[loc] == "\n":
+            return loc + 1, "\n"
+        elif loc < len(instring) or loc != len(instring):
             raise ParseException(instring, loc, self.errmsg, self)
+        else:
+            return loc + 1, []
 
 class StringStart(_PositionToken):
     """Matches if current position is at the beginning of the parse
@@ -3796,10 +3756,8 @@ class StringStart(_PositionToken):
         self.errmsg = "Expected start of text"
 
     def parseImpl(self, instring, loc, doActions=True):
-        if loc != 0:
-            # see if entire string up to here is just whitespace and ignoreables
-            if loc != self.preParse(instring, 0):
-                raise ParseException(instring, loc, self.errmsg, self)
+        if loc not in [0, self.preParse(instring, 0)]:
+            raise ParseException(instring, loc, self.errmsg, self)
         return loc, []
 
 class StringEnd(_PositionToken):
@@ -3810,14 +3768,12 @@ class StringEnd(_PositionToken):
         self.errmsg = "Expected end of text"
 
     def parseImpl(self, instring, loc, doActions=True):
-        if loc < len(instring):
+        if loc < len(instring) or loc != len(instring) and loc <= len(instring):
             raise ParseException(instring, loc, self.errmsg, self)
         elif loc == len(instring):
             return loc + 1, []
-        elif loc > len(instring):
-            return loc, []
         else:
-            raise ParseException(instring, loc, self.errmsg, self)
+            return loc, []
 
 class WordStart(_PositionToken):
     """Matches if the current position is at the beginning of a Word,
@@ -3834,10 +3790,13 @@ class WordStart(_PositionToken):
         self.errmsg = "Not at the start of a word"
 
     def parseImpl(self, instring, loc, doActions=True):
-        if loc != 0:
-            if (instring[loc - 1] in self.wordChars
-                    or instring[loc] not in self.wordChars):
-                raise ParseException(instring, loc, self.errmsg, self)
+        if loc != 0 and (
+            (
+                instring[loc - 1] in self.wordChars
+                or instring[loc] not in self.wordChars
+            )
+        ):
+            raise ParseException(instring, loc, self.errmsg, self)
         return loc, []
 
 class WordEnd(_PositionToken):
@@ -3856,10 +3815,17 @@ class WordEnd(_PositionToken):
 
     def parseImpl(self, instring, loc, doActions=True):
         instrlen = len(instring)
-        if instrlen > 0 and loc < instrlen:
-            if (instring[loc] in self.wordChars or
-                    instring[loc - 1] not in self.wordChars):
-                raise ParseException(instring, loc, self.errmsg, self)
+        if (
+            instrlen > 0
+            and loc < instrlen
+            and (
+                (
+                    instring[loc] in self.wordChars
+                    or instring[loc - 1] not in self.wordChars
+                )
+            )
+        ):
+            raise ParseException(instring, loc, self.errmsg, self)
         return loc, []
 
 
@@ -3904,12 +3870,11 @@ class ParseExpression(ParserElement):
         return self
 
     def ignore(self, other):
-        if isinstance(other, Suppress):
-            if other not in self.ignoreExprs:
-                super(ParseExpression, self).ignore(other)
-                for e in self.exprs:
-                    e.ignore(self.ignoreExprs[-1])
-        else:
+        if (
+            isinstance(other, Suppress)
+            and other not in self.ignoreExprs
+            or not isinstance(other, Suppress)
+        ):
             super(ParseExpression, self).ignore(other)
             for e in self.exprs:
                 e.ignore(self.ignoreExprs[-1])
@@ -4014,11 +3979,10 @@ class And(ParseExpression):
             tmp = []
             for i, expr in enumerate(exprs):
                 if expr is Ellipsis:
-                    if i < len(exprs) - 1:
-                        skipto_arg = (Empty() + exprs[i + 1]).exprs[-1]
-                        tmp.append(SkipTo(skipto_arg)("_skipped*"))
-                    else:
+                    if i >= len(exprs) - 1:
                         raise Exception("cannot construct And with sequence ending in ...")
+                    skipto_arg = (Empty() + exprs[i + 1]).exprs[-1]
+                    tmp.append(SkipTo(skipto_arg)("_skipped*"))
                 else:
                     tmp.append(expr)
             exprs[:] = tmp
@@ -4030,17 +3994,20 @@ class And(ParseExpression):
 
     def streamline(self):
         # collapse any _PendingSkip's
-        if self.exprs:
-            if any(isinstance(e, ParseExpression) and e.exprs and isinstance(e.exprs[-1], _PendingSkip)
-                   for e in self.exprs[:-1]):
-                for i, e in enumerate(self.exprs[:-1]):
-                    if e is None:
-                        continue
-                    if (isinstance(e, ParseExpression)
-                            and e.exprs and isinstance(e.exprs[-1], _PendingSkip)):
-                        e.exprs[-1] = e.exprs[-1] + self.exprs[i + 1]
-                        self.exprs[i + 1] = None
-                self.exprs = [e for e in self.exprs if e is not None]
+        if self.exprs and any(
+            isinstance(e, ParseExpression)
+            and e.exprs
+            and isinstance(e.exprs[-1], _PendingSkip)
+            for e in self.exprs[:-1]
+        ):
+            for i, e in enumerate(self.exprs[:-1]):
+                if e is None:
+                    continue
+                if (isinstance(e, ParseExpression)
+                        and e.exprs and isinstance(e.exprs[-1], _PendingSkip)):
+                    e.exprs[-1] = e.exprs[-1] + self.exprs[i + 1]
+                    self.exprs[i + 1] = None
+            self.exprs = [e for e in self.exprs if e is not None]
 
         super(And, self).streamline()
         self.mayReturnEmpty = all(e.mayReturnEmpty for e in self.exprs)
@@ -4177,11 +4144,10 @@ class Or(ParseExpression):
             if longest != (-1, None):
                 return longest
 
-        if maxException is not None:
-            maxException.msg = self.errmsg
-            raise maxException
-        else:
+        if maxException is None:
             raise ParseException(instring, loc, "no defined alternatives to match", self)
+        maxException.msg = self.errmsg
+        raise maxException
 
 
     def __ixor__(self, other):
@@ -4204,14 +4170,15 @@ class Or(ParseExpression):
             e.checkRecursion(subRecCheckList)
 
     def _setResultsName(self, name, listAllMatches=False):
-        if (not __compat__.collect_all_And_tokens
-                and __diag__.warn_multiple_tokens_in_named_alternation):
-            if any(isinstance(e, And) for e in self.exprs):
-                warnings.warn("{0}: setting results name {1!r} on {2} expression "
-                              "may only return a single token for an And alternative, "
-                              "in future will return the full list of tokens".format(
-                    "warn_multiple_tokens_in_named_alternation", name, type(self).__name__),
-                    stacklevel=3)
+        if (
+            not __compat__.collect_all_And_tokens
+            and __diag__.warn_multiple_tokens_in_named_alternation
+        ) and any(isinstance(e, And) for e in self.exprs):
+            warnings.warn("{0}: setting results name {1!r} on {2} expression "
+                          "may only return a single token for an And alternative, "
+                          "in future will return the full list of tokens".format(
+                "warn_multiple_tokens_in_named_alternation", name, type(self).__name__),
+                stacklevel=3)
 
         return super(Or, self)._setResultsName(name, listAllMatches)
 
@@ -4251,8 +4218,7 @@ class MatchFirst(ParseExpression):
         maxException = None
         for e in self.exprs:
             try:
-                ret = e._parse(instring, loc, doActions)
-                return ret
+                return e._parse(instring, loc, doActions)
             except ParseException as err:
                 if err.loc > maxExcLoc:
                     maxException = err
@@ -4262,13 +4228,10 @@ class MatchFirst(ParseExpression):
                     maxException = ParseException(instring, len(instring), e.errmsg, self)
                     maxExcLoc = len(instring)
 
-        # only got here if no expression matched, raise exception for match that made it the furthest
-        else:
-            if maxException is not None:
-                maxException.msg = self.errmsg
-                raise maxException
-            else:
-                raise ParseException(instring, loc, "no defined alternatives to match", self)
+        if maxException is None:
+            raise ParseException(instring, loc, "no defined alternatives to match", self)
+        maxException.msg = self.errmsg
+        raise maxException
 
     def __ior__(self, other):
         if isinstance(other, basestring):
@@ -4290,14 +4253,15 @@ class MatchFirst(ParseExpression):
             e.checkRecursion(subRecCheckList)
 
     def _setResultsName(self, name, listAllMatches=False):
-        if (not __compat__.collect_all_And_tokens
-                and __diag__.warn_multiple_tokens_in_named_alternation):
-            if any(isinstance(e, And) for e in self.exprs):
-                warnings.warn("{0}: setting results name {1!r} on {2} expression "
-                              "may only return a single token for an And alternative, "
-                              "in future will return the full list of tokens".format(
-                    "warn_multiple_tokens_in_named_alternation", name, type(self).__name__),
-                    stacklevel=3)
+        if (
+            not __compat__.collect_all_And_tokens
+            and __diag__.warn_multiple_tokens_in_named_alternation
+        ) and any(isinstance(e, And) for e in self.exprs):
+            warnings.warn("{0}: setting results name {1!r} on {2} expression "
+                          "may only return a single token for an And alternative, "
+                          "in future will return the full list of tokens".format(
+                "warn_multiple_tokens_in_named_alternation", name, type(self).__name__),
+                stacklevel=3)
 
         return super(MatchFirst, self)._setResultsName(name, listAllMatches)
 
@@ -4373,7 +4337,7 @@ class Each(ParseExpression):
 
     def parseImpl(self, instring, loc, doActions=True):
         if self.initExprGroups:
-            self.opt1map = dict((id(e.expr), e) for e in self.exprs if isinstance(e, Optional))
+            self.opt1map = {id(e.expr): e for e in self.exprs if isinstance(e, Optional)}
             opt1 = [e.expr for e in self.exprs if isinstance(e, Optional)]
             opt2 = [e for e in self.exprs if e.mayReturnEmpty and not isinstance(e, (Optional, Regex))]
             self.optionals = opt1 + opt2
@@ -4471,12 +4435,11 @@ class ParseElementEnhance(ParserElement):
         return self
 
     def ignore(self, other):
-        if isinstance(other, Suppress):
-            if other not in self.ignoreExprs:
-                super(ParseElementEnhance, self).ignore(other)
-                if self.expr is not None:
-                    self.expr.ignore(self.ignoreExprs[-1])
-        else:
+        if (
+            isinstance(other, Suppress)
+            and other not in self.ignoreExprs
+            or not isinstance(other, Suppress)
+        ):
             super(ParseElementEnhance, self).ignore(other)
             if self.expr is not None:
                 self.expr.ignore(self.ignoreExprs[-1])
@@ -4690,9 +4653,6 @@ class _MultipleMatch(ParseElementEnhance):
         if check_ender:
             try_not_ender = self.not_ender.tryParse
 
-        # must be at least one (but first see if we are the stopOn sentinel;
-        # if so, fail)
-        if check_ender:
             try_not_ender(instring, loc)
         loc, tokens = self_expr_parse(instring, loc, doActions, callPreParse=False)
         try:
@@ -4700,10 +4660,7 @@ class _MultipleMatch(ParseElementEnhance):
             while 1:
                 if check_ender:
                     try_not_ender(instring, loc)
-                if hasIgnoreExprs:
-                    preloc = self_skip_ignorables(instring, loc)
-                else:
-                    preloc = loc
+                preloc = self_skip_ignorables(instring, loc) if hasIgnoreExprs else loc
                 loc, tmptokens = self_expr_parse(instring, preloc, doActions)
                 if tmptokens or tmptokens.haskeys():
                     tokens += tmptokens
@@ -4848,14 +4805,13 @@ class Optional(ParseElementEnhance):
         try:
             loc, tokens = self.expr._parse(instring, loc, doActions, callPreParse=False)
         except (ParseException, IndexError):
-            if self.defaultValue is not self.__optionalNotMatched:
-                if self.expr.resultsName:
-                    tokens = ParseResults([self.defaultValue])
-                    tokens[self.expr.resultsName] = self.defaultValue
-                else:
-                    tokens = [self.defaultValue]
-            else:
+            if self.defaultValue is self.__optionalNotMatched:
                 tokens = []
+            elif self.expr.resultsName:
+                tokens = ParseResults([self.defaultValue])
+                tokens[self.expr.resultsName] = self.defaultValue
+            else:
+                tokens = [self.defaultValue]
         return loc, tokens
 
     def __str__(self):
@@ -4948,10 +4904,10 @@ class SkipTo(ParseElementEnhance):
 
         tmploc = loc
         while tmploc <= instrlen:
-            if self_failOn_canParseNext is not None:
-                # break if failOn expression matches
-                if self_failOn_canParseNext(instring, tmploc):
-                    break
+            if self_failOn_canParseNext is not None and self_failOn_canParseNext(
+                instring, tmploc
+            ):
+                break
 
             if self_ignoreExpr_tryParse is not None:
                 # advance past ignore expressions
@@ -5064,10 +5020,7 @@ class Forward(ParseElementEnhance):
         # Use the string representation of main expression.
         retString = '...'
         try:
-            if self.expr is not None:
-                retString = _ustr(self.expr)[:1000]
-            else:
-                retString = "None"
+            retString = _ustr(self.expr)[:1000] if self.expr is not None else "None"
         finally:
             self.strRepr = self.__class__.__name__ + ": " + retString
         return self.strRepr
@@ -5075,19 +5028,17 @@ class Forward(ParseElementEnhance):
     def copy(self):
         if self.expr is not None:
             return super(Forward, self).copy()
-        else:
-            ret = Forward()
-            ret <<= self
-            return ret
+        ret = Forward()
+        ret <<= self
+        return ret
 
     def _setResultsName(self, name, listAllMatches=False):
-        if __diag__.warn_name_set_on_empty_Forward:
-            if self.expr is None:
-                warnings.warn("{0}: setting results name {0!r} on {1} expression "
-                              "that has no contained expression".format("warn_name_set_on_empty_Forward",
-                                                                        name,
-                                                                        type(self).__name__),
-                              stacklevel=3)
+        if __diag__.warn_name_set_on_empty_Forward and self.expr is None:
+            warnings.warn("{0}: setting results name {0!r} on {1} expression "
+                          "that has no contained expression".format("warn_name_set_on_empty_Forward",
+                                                                    name,
+                                                                    type(self).__name__),
+                          stacklevel=3)
 
         return super(Forward, self)._setResultsName(name, listAllMatches)
 
@@ -5532,7 +5483,7 @@ def oneOf(strs, caseless=False, useRegex=True, asKeyword=False):
             else:
                 i += 1
 
-    if not (caseless or asKeyword) and useRegex:
+    if not caseless and not asKeyword and useRegex:
         # ~ print (strs, "->", "|".join([_escapeRegexChars(sym) for sym in symbols]))
         try:
             if len(symbols) == len("".join(symbols)):
@@ -6192,34 +6143,34 @@ def nestedExpr(opener="(", closer=")", content=None, ignoreExpr=quotedString.cop
     if opener == closer:
         raise ValueError("opening and closing strings cannot be the same")
     if content is None:
-        if isinstance(opener, basestring) and isinstance(closer, basestring):
-            if len(opener) == 1 and len(closer) == 1:
-                if ignoreExpr is not None:
-                    content = (Combine(OneOrMore(~ignoreExpr
-                                                 + CharsNotIn(opener
-                                                              + closer
-                                                              + ParserElement.DEFAULT_WHITE_CHARS, exact=1)
-                                                 )
-                                       ).setParseAction(lambda t: t[0].strip()))
-                else:
-                    content = (empty.copy() + CharsNotIn(opener
-                                                         + closer
-                                                         + ParserElement.DEFAULT_WHITE_CHARS
-                                                         ).setParseAction(lambda t: t[0].strip()))
-            else:
-                if ignoreExpr is not None:
-                    content = (Combine(OneOrMore(~ignoreExpr
-                                                 + ~Literal(opener)
-                                                 + ~Literal(closer)
-                                                 + CharsNotIn(ParserElement.DEFAULT_WHITE_CHARS, exact=1))
-                                       ).setParseAction(lambda t: t[0].strip()))
-                else:
-                    content = (Combine(OneOrMore(~Literal(opener)
-                                                 + ~Literal(closer)
-                                                 + CharsNotIn(ParserElement.DEFAULT_WHITE_CHARS, exact=1))
-                                       ).setParseAction(lambda t: t[0].strip()))
-        else:
+        if not isinstance(opener, basestring) or not isinstance(
+            closer, basestring
+        ):
             raise ValueError("opening and closing arguments must be strings if no content expression is given")
+        if len(opener) == 1 and len(closer) == 1:
+            if ignoreExpr is not None:
+                content = (Combine(OneOrMore(~ignoreExpr
+                                             + CharsNotIn(opener
+                                                          + closer
+                                                          + ParserElement.DEFAULT_WHITE_CHARS, exact=1)
+                                             )
+                                   ).setParseAction(lambda t: t[0].strip()))
+            else:
+                content = (empty.copy() + CharsNotIn(opener
+                                                     + closer
+                                                     + ParserElement.DEFAULT_WHITE_CHARS
+                                                     ).setParseAction(lambda t: t[0].strip()))
+        elif ignoreExpr is not None:
+            content = (Combine(OneOrMore(~ignoreExpr
+                                         + ~Literal(opener)
+                                         + ~Literal(closer)
+                                         + CharsNotIn(ParserElement.DEFAULT_WHITE_CHARS, exact=1))
+                               ).setParseAction(lambda t: t[0].strip()))
+        else:
+            content = (Combine(OneOrMore(~Literal(opener)
+                                         + ~Literal(closer)
+                                         + CharsNotIn(ParserElement.DEFAULT_WHITE_CHARS, exact=1))
+                               ).setParseAction(lambda t: t[0].strip()))
     ret = Forward()
     if ignoreExpr is not None:
         ret <<= Group(Suppress(opener) + ZeroOrMore(ignoreExpr | ret | content) + Suppress(closer))

@@ -267,9 +267,11 @@ class SimplifyRule_Visitor(Visitor):
     def alias(self, tree):
         rule, alias_name = tree.children
         if rule.data == 'expansions':
-            aliases = []
-            for child in tree.children[0].children:
-                aliases.append(ST('alias', [child, alias_name]))
+            aliases = [
+                ST('alias', [child, alias_name])
+                for child in tree.children[0].children
+            ]
+
             tree.data = 'expansions'
             tree.children = aliases
 
@@ -934,9 +936,8 @@ class GrammarLoader:
                 if sym.type == 'TERMINAL':
                     if sym not in terminal_names:
                         raise GrammarError("Token '%s' used but not defined (in rule %s)" % (sym, name))
-                else:
-                    if sym not in rule_names and sym not in params:
-                        raise GrammarError("Rule '%s' used but not defined (in rule %s)" % (sym, name))
+                elif sym not in rule_names and sym not in params:
+                    raise GrammarError("Rule '%s' used but not defined (in rule %s)" % (sym, name))
 
 
         return Grammar(rules, term_defs, ignore_names)

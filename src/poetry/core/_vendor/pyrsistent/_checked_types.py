@@ -72,16 +72,12 @@ def maybe_parse_user_type(t):
     is_string = isinstance(t, string_types)
     is_iterable = isinstance(t, Iterable)
 
-    if is_preserved:
-        return [t]
-    elif is_string:
-        return [t]
-    elif is_type and not is_iterable:
+    if is_preserved or is_string or is_type and not is_iterable:
         return [t]
     elif is_iterable:
         # Recur to validate contained types as well.
         ts = t
-        return tuple(e for t in ts for e in maybe_parse_user_type(t))
+        return tuple(e for ts in ts for e in maybe_parse_user_type(ts))
     else:
         # If this raises because `t` cannot be formatted, so be it.
         raise TypeError(
@@ -140,8 +136,7 @@ def _all_dicts(bases, seen=None):
             continue
         seen.add(cls)
         yield cls.__dict__
-        for b in _all_dicts(cls.__bases__, seen):
-            yield b
+        yield from _all_dicts(cls.__bases__, seen)
 
 
 def store_invariants(dct, bases, destination_name, source_name):
@@ -245,7 +240,7 @@ def _invariant_errors(elem, invariants):
 
 
 def _invariant_errors_iterable(it, invariants):
-    return sum([_invariant_errors(elem, invariants) for elem in it], [])
+    return sum((_invariant_errors(elem, invariants) for elem in it), [])
 
 
 def optional(*typs):
@@ -302,7 +297,7 @@ class CheckedPVector(PythonPVector, CheckedType):
 
     def serialize(self, format=None):
         serializer = self.__serializer__
-        return list(serializer(format, v) for v in self)
+        return [serializer(format, v) for v in self]
 
     def __reduce__(self):
         # Pickling support
@@ -388,7 +383,7 @@ class CheckedPSet(PSet, CheckedType):
 
     def serialize(self, format=None):
         serializer = self.__serializer__
-        return set(serializer(format, v) for v in self)
+        return {serializer(format, v) for v in self}
 
     create = classmethod(_checked_type_create)
 
@@ -505,9 +500,19 @@ class CheckedPMap(PMap, CheckedType):
         checked_value_type = next((t for t in value_types if issubclass(t, CheckedType)), None)
 
         if checked_key_type or checked_value_type:
-            return cls(dict((checked_key_type.create(key) if checked_key_type and not any(isinstance(key, t) for t in key_types) else key,
-                             checked_value_type.create(value) if checked_value_type and not any(isinstance(value, t) for t in value_types) else value)
-                            for key, value in source_data.items()))
+            return cls(
+                {
+                    checked_key_type.create(key)
+                    if checked_key_type
+                    and not any(isinstance(key, t) for t in key_types)
+                    else key: checked_value_type.create(value)
+                    if checked_value_type
+                    and not any(isinstance(value, t) for t in value_types)
+                    else value
+                    for key, value in source_data.items()
+                }
+            )
+
 
         return cls(source_data)
 

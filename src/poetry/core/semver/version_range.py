@@ -102,7 +102,7 @@ class VersionRange(VersionRangeConstraint):
             return self.allows(other)
 
         if isinstance(other, VersionUnion):
-            return all([self.allows_all(constraint) for constraint in other.ranges])
+            return all(self.allows_all(constraint) for constraint in other.ranges)
 
         if isinstance(other, VersionRangeConstraint):
             return not other.allows_lower(self) and not other.allows_higher(self)
@@ -119,7 +119,7 @@ class VersionRange(VersionRangeConstraint):
             return self.allows(other)
 
         if isinstance(other, VersionUnion):
-            return any([self.allows_any(constraint) for constraint in other.ranges])
+            return any(self.allows_any(constraint) for constraint in other.ranges)
 
         if isinstance(other, VersionRangeConstraint):
             return not other.is_strictly_lower(self) and not other.is_strictly_higher(
@@ -406,7 +406,7 @@ class VersionRange(VersionRangeConstraint):
         return text
 
     def __repr__(self) -> str:
-        return f"<VersionRange ({str(self)})>"
+        return f'<VersionRange ({self})>'
 
     def __hash__(self) -> int:
         return (

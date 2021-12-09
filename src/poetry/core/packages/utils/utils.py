@@ -118,17 +118,13 @@ def is_installable_dir(path: str) -> bool:
     if not os.path.isdir(path):
         return False
     setup_py = os.path.join(path, "setup.py")
-    if os.path.isfile(setup_py):
-        return True
-    return False
+    return bool(os.path.isfile(setup_py))
 
 
 def is_archive_file(name: str) -> bool:
     """Return True if `name` is a considered as an archive file."""
     ext = splitext(name)[1].lower()
-    if ext in ARCHIVE_EXTENSIONS:
-        return True
-    return False
+    return ext in ARCHIVE_EXTENSIONS
 
 
 def splitext(path: str) -> Tuple[str, str]:
@@ -221,10 +217,7 @@ def create_nested_marker(
     if isinstance(constraint, (MultiConstraint, UnionConstraint)):
         parts = []
         for c in constraint.constraints:
-            multi = False
-            if isinstance(c, (MultiConstraint, UnionConstraint)):
-                multi = True
-
+            multi = isinstance(c, (MultiConstraint, UnionConstraint))
             parts.append((multi, create_nested_marker(name, c)))
 
         glue = " and "
@@ -234,29 +227,23 @@ def create_nested_marker(
         else:
             parts = [part[1] for part in parts]
 
-        marker = glue.join(parts)
+        return glue.join(parts)
     elif isinstance(constraint, Constraint):
-        marker = f'{name} {constraint.operator} "{constraint.version}"'
+        return f'{name} {constraint.operator} "{constraint.version}"'
     elif isinstance(constraint, VersionUnion):
-        parts = []
-        for c in constraint.ranges:
-            parts.append(create_nested_marker(name, c))
-
+        parts = [create_nested_marker(name, c) for c in constraint.ranges]
         glue = " or "
         parts = [f"({part})" for part in parts]
 
-        marker = glue.join(parts)
+        return glue.join(parts)
     elif isinstance(constraint, Version):
         if name == "python_version" and constraint.precision >= 3:
             name = "python_full_version"
 
-        marker = f'{name} == "{constraint.text}"'
+        return f'{name} == "{constraint.text}"'
     else:
         if constraint.min is not None:
-            op = ">="
-            if not constraint.include_min:
-                op = ">"
-
+            op = ">" if not constraint.include_min else ">="
             version = constraint.min
             if constraint.max is not None:
                 min_name = max_name = name
@@ -278,10 +265,7 @@ def create_nested_marker(
 
                 return text
         elif constraint.max is not None:
-            op = "<="
-            if not constraint.include_max:
-                op = "<"
-
+            op = "<" if not constraint.include_max else "<="
             version = constraint.max
         else:
             return ""
@@ -289,9 +273,7 @@ def create_nested_marker(
         if name == "python_version" and version.precision >= 3:
             name = "python_full_version"
 
-        marker = f'{name} {op} "{version}"'
-
-    return marker
+        return f'{name} {op} "{version}"'
 
 
 def get_python_constraint_from_marker(

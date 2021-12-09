@@ -83,7 +83,7 @@ class BaseMarker:
         raise NotImplementedError()
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} {str(self)}>"
+        return f'<{self.__class__.__name__} {self}>'
 
 
 class AnyMarker(BaseMarker):
@@ -216,10 +216,7 @@ class SingleMarker(BaseMarker):
 
                     versions.append(op + ".".join(split))
 
-                glue = ", "
-                if self._operator == "in":
-                    glue = " || "
-
+                glue = " || " if self._operator == "in" else ", "
                 self._constraint = self._parser(glue.join(versions))
             else:
                 self._constraint = self._parser(self._constraint_string)
@@ -258,26 +255,25 @@ class SingleMarker(BaseMarker):
         return self._value
 
     def intersect(self, other: MarkerTypes) -> MarkerTypes:
-        if isinstance(other, SingleMarker):
-            if other.name != self.name:
-                return MultiMarker(self, other)
+        if not isinstance(other, SingleMarker):
+            return other.intersect(self)
+        if other.name != self.name:
+            return MultiMarker(self, other)
 
-            if self == other:
-                return self
+        if self == other:
+            return self
 
-            if self._operator in {"in", "not in"} or other.operator in {"in", "not in"}:
-                return MultiMarker.of(self, other)
-
-            new_constraint = self._constraint.intersect(other.constraint)
-            if new_constraint.is_empty():
-                return EmptyMarker()
-
-            if new_constraint == self._constraint or new_constraint == other.constraint:
-                return SingleMarker(self._name, new_constraint)
-
+        if self._operator in {"in", "not in"} or other.operator in {"in", "not in"}:
             return MultiMarker.of(self, other)
 
-        return other.intersect(self)
+        new_constraint = self._constraint.intersect(other.constraint)
+        if new_constraint.is_empty():
+            return EmptyMarker()
+
+        if new_constraint in [self._constraint, other.constraint]:
+            return SingleMarker(self._name, new_constraint)
+
+        return MultiMarker.of(self, other)
 
     def union(self, other: MarkerTypes) -> MarkerTypes:
         if isinstance(other, SingleMarker):
@@ -412,8 +408,7 @@ class MultiMarker(BaseMarker):
                 for i, mark in enumerate(new_markers):
                     if (
                         not isinstance(mark, SingleMarker)
-                        or isinstance(mark, SingleMarker)
-                        and mark.name != marker.name
+                        or mark.name != marker.name
                     ):
                         continue
 
@@ -461,11 +456,7 @@ class MultiMarker(BaseMarker):
         return other.union(self)
 
     def validate(self, environment: Dict[str, Any]) -> bool:
-        for m in self._markers:
-            if not m.validate(environment):
-                return False
-
-        return True
+        return all(m.validate(environment) for m in self._markers)
 
     def without_extras(self) -> MarkerTypes:
         return self.exclude("extra")
@@ -521,12 +512,10 @@ class MultiMarker(BaseMarker):
     def __str__(self) -> str:
         elements = []
         for m in self._markers:
-            if isinstance(m, SingleMarker):
-                elements.append(str(m))
-            elif isinstance(m, MultiMarker):
+            if isinstance(m, (SingleMarker, MultiMarker)):
                 elements.append(str(m))
             else:
-                elements.append(f"({str(m)})")
+                elements.append(f'({m})')
 
         return " and ".join(elements)
 
@@ -553,8 +542,7 @@ class MarkerUnion(BaseMarker):
                 for i, mark in enumerate(markers):
                     if (
                         not isinstance(mark, SingleMarker)
-                        or isinstance(mark, SingleMarker)
-                        and mark.name != marker.name
+                        or mark.name != marker.name
                     ):
                         continue
 
@@ -625,11 +613,7 @@ class MarkerUnion(BaseMarker):
         return MarkerUnion.of(*new_markers)
 
     def validate(self, environment: Dict[str, Any]) -> bool:
-        for m in self._markers:
-            if m.validate(environment):
-                return True
-
-        return False
+        return any(m.validate(environment) for m in self._markers)
 
     def without_extras(self) -> MarkerTypes:
         return self.exclude("extra")
@@ -703,9 +687,7 @@ def parse_marker(marker: str) -> MarkerTypes:
 
     parsed = _parser.parse(marker)
 
-    markers = _compact_markers(parsed.children)
-
-    return markers
+    return _compact_markers(parsed.children)
 
 
 def _compact_markers(tree_elements: "Tree", tree_prefix: str = "") -> MarkerTypes:

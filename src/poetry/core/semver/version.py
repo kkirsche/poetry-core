@@ -147,7 +147,7 @@ class Version(PEP440Version, VersionRangeConstraint):
         return self.text
 
     def __repr__(self) -> str:
-        return f"<Version {str(self)}>"
+        return f'<Version {self}>'
 
     def __eq__(self, other: Union["Version", "VersionRangeConstraint"]) -> bool:
         from poetry.core.semver.version_range import VersionRange

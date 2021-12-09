@@ -74,12 +74,7 @@ class PMap(object):
     def _contains(buckets, key):
         _, bucket = PMap._get_bucket(buckets, key)
         if bucket:
-            for k, _ in bucket:
-                if k == key:
-                    return True
-
-            return False
-
+            return any(k == key for k, _ in bucket)
         return False
 
     def __contains__(self, key):
@@ -112,8 +107,7 @@ class PMap(object):
     def iteritems(self):
         for bucket in self._buckets:
             if bucket:
-                for k, v in bucket:
-                    yield k, v
+                yield from bucket
 
     def values(self):
         return pvector(self.itervalues())
@@ -312,11 +306,9 @@ class PMap(object):
                 new_bucket = [kv]
                 new_bucket.extend(bucket)
                 self._buckets_evolver[index] = new_bucket
-                self._size += 1
             else:
                 self._buckets_evolver[index] = [kv]
-                self._size += 1
-
+            self._size += 1
             return self
 
         def _reallocate(self, new_size):
@@ -358,7 +350,7 @@ class PMap(object):
             if bucket:
                 new_bucket = [(k, v) for (k, v) in bucket if k != key]
                 if len(bucket) > len(new_bucket):
-                    self._buckets_evolver[index] = new_bucket if new_bucket else None
+                    self._buckets_evolver[index] = new_bucket or None
                     self._size -= 1
                     return self
 
