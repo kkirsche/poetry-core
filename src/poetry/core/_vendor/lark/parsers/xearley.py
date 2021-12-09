@@ -97,7 +97,10 @@ class Parser(BaseParser):
 
                     new_item = item.advance()
                     label = (new_item.s, new_item.start, i)
-                    new_item.node = node_cache[label] if label in node_cache else node_cache.setdefault(label, SymbolNode(*label))
+                    new_item.node = node_cache.get(
+                        label, node_cache.setdefault(label, SymbolNode(*label))
+                    )
+
                     new_item.node.add_family(new_item.s, item.rule, new_item.start, item.node, token)
                 else:
                     new_item = item

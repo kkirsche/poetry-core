@@ -24,11 +24,7 @@ class MultiConstraint(BaseConstraint):
         return self._constraints
 
     def allows(self, other: "ConstraintTypes") -> bool:
-        for constraint in self._constraints:
-            if not constraint.allows(other):
-                return False
-
-        return True
+        return all(constraint.allows(other) for constraint in self._constraints)
 
     def allows_all(self, other: "ConstraintTypes") -> bool:
         if other.is_any():
@@ -93,8 +89,5 @@ class MultiConstraint(BaseConstraint):
         ) == sorted(other.constraints, key=lambda c: (c.operator, c.version))
 
     def __str__(self) -> str:
-        constraints = []
-        for constraint in self._constraints:
-            constraints.append(str(constraint))
-
+        constraints = [str(constraint) for constraint in self._constraints]
         return ", ".join(constraints)

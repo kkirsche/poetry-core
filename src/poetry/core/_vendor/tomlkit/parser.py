@@ -386,8 +386,6 @@ class Parser:
                     raise self.parse_error(UnexpectedCharError, "=")
                 else:
                     found_equals = True
-            pass
-
         if not key.sep:
             key.sep = self.extract()
         else:
@@ -773,10 +771,8 @@ class Parser:
                     # Either the previous key-value pair was not followed by a comma
                     # or the table has an unexpected leading comma.
                     raise self.parse_error(UnexpectedCharError, self._current)
-            else:
-                # True: previous key-value pair was followed by a comma
-                if self._current == "}" or self._current == ",":
-                    raise self.parse_error(UnexpectedCharError, self._current)
+            elif self._current in ["}", ","]:
+                raise self.parse_error(UnexpectedCharError, self._current)
 
             key, val = self._parse_key_value(False)
             if key.is_dotted():
@@ -1007,7 +1003,7 @@ class Parser:
 
     def _parse_table(
         self, parent_name=None, parent=None
-    ):  # type: (Optional[str], Optional[Table]) -> Tuple[Key, Union[Table, AoT]]
+    ):    # type: (Optional[str], Optional[Table]) -> Tuple[Key, Union[Table, AoT]]
         """
         Parses a table element.
         """
@@ -1037,7 +1033,10 @@ class Parser:
         ws_prefix = self.extract()
 
         # Key
-        if self._current in [StringType.SLL.value, StringType.SLB.value]:
+        if (
+            self._current == StringType.SLL.value
+            or self._current == StringType.SLB.value
+        ):
             delimiter = (
                 StringType.SLL
                 if self._current == StringType.SLL.value
@@ -1053,8 +1052,6 @@ class Parser:
                 if self.end():
                     raise self.parse_error(UnexpectedEofError)
 
-                pass
-
             ws_suffix = self.extract()
             name += ws_suffix
         else:
@@ -1062,8 +1059,6 @@ class Parser:
             while self._current != "]" and self.inc():
                 if self.end():
                     raise self.parse_error(UnexpectedEofError)
-
-                pass
 
             name = self.extract()
 
@@ -1077,15 +1072,12 @@ class Parser:
         if any(" " in part.key.strip() and part.is_bare() for part in name_parts):
             raise self.parse_error(ParseError, 'Invalid table name "{}"'.format(name))
 
-        missing_table = False
         if parent_name:
             parent_name_parts = tuple(self._split_table_name(parent_name))
         else:
             parent_name_parts = tuple()
 
-        if len(name_parts) > len(parent_name_parts) + 1:
-            missing_table = True
-
+        missing_table = len(name_parts) > len(parent_name_parts) + 1
         name_parts = name_parts[len(parent_name_parts) :]
 
         values = Container(True)
@@ -1158,32 +1150,31 @@ class Parser:
                     else:
                         table.raw_append(_key, item)
             else:
-                if self._current == "[":
-                    is_aot_next, name_next = self._peek_table()
-
-                    if self._is_child(name, name_next):
-                        key_next, table_next = self._parse_table(name, table)
-
-                        table.raw_append(key_next, table_next)
-
-                        # Picking up any sibling
-                        while not self.end():
-                            _, name_next = self._peek_table()
-
-                            if not self._is_child(name, name_next):
-                                break
-
-                            key_next, table_next = self._parse_table(name, table)
-
-                            table.raw_append(key_next, table_next)
-
-                    break
-                else:
+                if self._current != "[":
                     raise self.parse_error(
                         InternalParserError,
                         "_parse_item() returned None on a non-bracket character.",
                     )
 
+                is_aot_next, name_next = self._peek_table()
+
+                if self._is_child(name, name_next):
+                    key_next, table_next = self._parse_table(name, table)
+
+                    table.raw_append(key_next, table_next)
+
+                    # Picking up any sibling
+                    while not self.end():
+                        _, name_next = self._peek_table()
+
+                        if not self._is_child(name, name_next):
+                            break
+
+                        key_next, table_next = self._parse_table(name, table)
+
+                        table.raw_append(key_next, table_next)
+
+                break
         if isinstance(result, Null):
             result = table
 

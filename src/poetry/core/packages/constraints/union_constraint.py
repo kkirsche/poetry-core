@@ -23,11 +23,7 @@ class UnionConstraint(BaseConstraint):
     def allows(
         self, other: Union[Constraint, MultiConstraint, "UnionConstraint"]
     ) -> bool:
-        for constraint in self._constraints:
-            if constraint.allows(other):
-                return True
-
-        return False
+        return any(constraint.allows(other) for constraint in self._constraints)
 
     def allows_any(self, other: "ConstraintTypes") -> bool:
         if other.is_empty():
@@ -36,11 +32,7 @@ class UnionConstraint(BaseConstraint):
         if other.is_any():
             return True
 
-        if isinstance(other, Constraint):
-            constraints = [other]
-        else:
-            constraints = other.constraints
-
+        constraints = [other] if isinstance(other, Constraint) else other.constraints
         for our_constraint in self._constraints:
             for their_constraint in constraints:
                 if our_constraint.allows_any(their_constraint):
@@ -55,11 +47,7 @@ class UnionConstraint(BaseConstraint):
         if other.is_empty():
             return True
 
-        if isinstance(other, Constraint):
-            constraints = [other]
-        else:
-            constraints = other.constraints
-
+        constraints = [other] if isinstance(other, Constraint) else other.constraints
         our_constraints = iter(self._constraints)
         their_constraints = iter(constraints)
         our_constraint = next(our_constraints, None)
@@ -117,8 +105,5 @@ class UnionConstraint(BaseConstraint):
         ) == sorted(other.constraints, key=lambda c: (c.operator, c.version))
 
     def __str__(self) -> str:
-        constraints = []
-        for constraint in self._constraints:
-            constraints.append(str(constraint))
-
+        constraints = [str(constraint) for constraint in self._constraints]
         return " || ".join(constraints)

@@ -154,9 +154,6 @@ class SdistBuilder(Builder):
 
                     if module not in modules:
                         modules.append(module)
-            else:
-                pass
-
         if package_dir:
             before.append(f"package_dir = \\\n{pformat(package_dir)}\n")
             extra.append("'package_dir': package_dir,")

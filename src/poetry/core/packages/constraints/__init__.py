@@ -36,10 +36,8 @@ def parse_constraint(
         else:
             constraint_objects.append(parse_single_constraint(and_constraints[0]))
 
-        if len(constraint_objects) == 1:
-            constraint = constraint_objects[0]
-        else:
-            constraint = constraint_objects[0]
+        constraint = constraint_objects[0]
+        if len(constraint_objects) != 1:
             for next_constraint in constraint_objects[1:]:
                 constraint = constraint.intersect(next_constraint)
 

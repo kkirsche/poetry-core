@@ -74,7 +74,10 @@ class Parser:
             if item.is_complete:   ### (item.s == string)
                 if item.node is None:
                     label = (item.s, item.start, i)
-                    item.node = node_cache[label] if label in node_cache else node_cache.setdefault(label, SymbolNode(*label))
+                    item.node = node_cache.get(
+                        label, node_cache.setdefault(label, SymbolNode(*label))
+                    )
+
                     item.node.add_family(item.s, item.rule, item.start, None, None)
 
                 # create_leo_transitives(item.rule.origin, item.start)
@@ -89,7 +92,10 @@ class Parser:
 
                     new_item = Item(transitive.rule, transitive.ptr, transitive.start)
                     label = (root_transitive.s, root_transitive.start, i)
-                    new_item.node = node_cache[label] if label in node_cache else node_cache.setdefault(label, SymbolNode(*label))
+                    new_item.node = node_cache.get(
+                        label, node_cache.setdefault(label, SymbolNode(*label))
+                    )
+
                     new_item.node.add_path(root_transitive, item.node)
                     if new_item.expect in self.TERMINALS:
                         # Add (B :: aC.B, h, y) to Q
@@ -98,7 +104,6 @@ class Parser:
                         # Add (B :: aC.B, h, y) to Ei and R
                         column.add(new_item)
                         items.append(new_item)
-                ###R Regular Earley completer
                 else:
                     # Empty has 0 length. If we complete an empty symbol in a particular
                     # parse step, we need to be able to use that same empty symbol to complete
@@ -113,7 +118,10 @@ class Parser:
                     for originator in originators:
                         new_item = originator.advance()
                         label = (new_item.s, originator.start, i)
-                        new_item.node = node_cache[label] if label in node_cache else node_cache.setdefault(label, SymbolNode(*label))
+                        new_item.node = node_cache.get(
+                            label, node_cache.setdefault(label, SymbolNode(*label))
+                        )
+
                         new_item.node.add_family(new_item.s, new_item.rule, i, originator.node, item.node)
                         if new_item.expect in self.TERMINALS:
                             # Add (B :: aC.B, h, y) to Q
@@ -123,7 +131,6 @@ class Parser:
                             column.add(new_item)
                             items.append(new_item)
 
-            ### The Earley predictor
             elif item.expect in self.NON_TERMINALS: ### (item.s == lr0)
                 new_items = []
                 for rule in self.predictions[item.expect]:
@@ -134,7 +141,10 @@ class Parser:
                 if item.expect in held_completions:
                     new_item = item.advance()
                     label = (new_item.s, item.start, i)
-                    new_item.node = node_cache[label] if label in node_cache else node_cache.setdefault(label, SymbolNode(*label))
+                    new_item.node = node_cache.get(
+                        label, node_cache.setdefault(label, SymbolNode(*label))
+                    )
+
                     new_item.node.add_family(new_item.s, new_item.rule, new_item.start, item.node, held_completions[item.expect])
                     new_items.append(new_item)
 
@@ -232,7 +242,10 @@ class Parser:
                 if match(item.expect, token):
                     new_item = item.advance()
                     label = (new_item.s, new_item.start, i)
-                    new_item.node = node_cache[label] if label in node_cache else node_cache.setdefault(label, SymbolNode(*label))
+                    new_item.node = node_cache.get(
+                        label, node_cache.setdefault(label, SymbolNode(*label))
+                    )
+
                     new_item.node.add_family(new_item.s, item.rule, new_item.start, item.node, token)
 
                     if new_item.expect in self.TERMINALS:

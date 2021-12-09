@@ -148,14 +148,16 @@ class Package(PackageSpecification):
         if self.source_type not in ["hg", "git"]:
             return self._pretty_version
 
-        if self.source_resolved_reference:
-            if len(self.source_resolved_reference) == 40:
-                ref = self.source_resolved_reference[0:7]
-                return f"{self._pretty_version} {ref}"
+        if (
+            self.source_resolved_reference
+            and len(self.source_resolved_reference) == 40
+        ):
+            ref = self.source_resolved_reference[:7]
+            return f"{self._pretty_version} {ref}"
 
         # if source reference is a sha1 hash -- truncate
         if len(self.source_reference) == 40:
-            return f"{self._pretty_version} {self.source_reference[0:7]}"
+            return f'{self._pretty_version} {self.source_reference[:7]}'
 
         ref = self._source_resolved_reference or self._source_reference
         return f"{self._pretty_version} {ref}"
@@ -271,9 +273,7 @@ class Package(PackageSpecification):
         from poetry.core.spdx.helpers import license_by_id
         from poetry.core.spdx.license import License  # noqa
 
-        if value is None:
-            self._license = value
-        elif isinstance(value, License):
+        if value is None or isinstance(value, License):
             self._license = value
         else:
             self._license = license_by_id(value)
@@ -433,13 +433,14 @@ class Package(PackageSpecification):
         package = self.clone()
 
         for group_name, group in self._dependency_groups.items():
-            if only:
-                if group_name not in groups:
-                    del package._dependency_groups[group_name]
-            else:
-                if group.is_optional() and group_name not in groups:
-                    del package._dependency_groups[group_name]
-
+            if (
+                only
+                and group_name not in groups
+                or not only
+                and group.is_optional()
+                and group_name not in groups
+            ):
+                del package._dependency_groups[group_name]
         return package
 
     def to_dependency(

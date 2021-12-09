@@ -74,9 +74,8 @@ def _generate_legacy_type_checks(types=()):
         pytypes = _utils.flatten(pytypes)
 
         def type_check(checker, instance):
-            if isinstance(instance, bool):
-                if bool not in pytypes:
-                    return False
+            if isinstance(instance, bool) and bool not in pytypes:
+                return False
             return isinstance(instance, pytypes)
 
         return type_check
@@ -314,11 +313,7 @@ def create(
                 self.resolver.push_scope(scope)
             try:
                 ref = _schema.get(u"$ref")
-                if ref is not None:
-                    validators = [(u"$ref", ref)]
-                else:
-                    validators = iteritems(_schema)
-
+                validators = [(u"$ref", ref)] if ref is not None else iteritems(_schema)
                 for k, v in validators:
                     validator = self.VALIDATORS.get(k)
                     if validator is None:

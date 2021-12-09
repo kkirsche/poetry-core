@@ -20,7 +20,10 @@ PY2 = sys.version_info[0] < 3
 
 
 def set_fields(dct, bases, name):
-    dct[name] = dict(sum([list(b.__dict__.get(name, {}).items()) for b in bases], []))
+    dct[name] = dict(
+        sum((list(b.__dict__.get(name, {}).items()) for b in bases), [])
+    )
+
 
     for k, v in list(dct.items()):
         if isinstance(v, _PField):
@@ -53,7 +56,7 @@ def is_type_cls(type_cls, field_type):
     if type(field_type) is set:
         return True
     types = tuple(field_type)
-    if len(types) == 0:
+    if not types:
         return False
     return issubclass(get_type(types[0]), type_cls)
 

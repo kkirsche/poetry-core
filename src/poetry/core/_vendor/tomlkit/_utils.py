@@ -59,28 +59,27 @@ def parse_rfc3339(string):  # type: (str) -> Union[datetime, date, time]
         if m.group(7):
             microsecond = int(("{:<06s}".format(m.group(8)))[:6])
 
-        if m.group(9):
-            # Timezone
-            tz = m.group(9)
-            if tz == "Z":
-                tzinfo = _utc
-            else:
-                sign = m.group(11)[0]
-                hour_offset, minute_offset = int(m.group(12)), int(m.group(13))
-                offset = timedelta(seconds=hour_offset * 3600 + minute_offset * 60)
-                if sign == "-":
-                    offset = -offset
-
-                tzinfo = timezone(
-                    offset, "{}{}:{}".format(sign, m.group(12), m.group(13))
-                )
-
-            return datetime(
-                year, month, day, hour, minute, second, microsecond, tzinfo=tzinfo
-            )
-        else:
+        if not m.group(9):
             return datetime(year, month, day, hour, minute, second, microsecond)
 
+        # Timezone
+        tz = m.group(9)
+        if tz == "Z":
+            tzinfo = _utc
+        else:
+            sign = m.group(11)[0]
+            hour_offset, minute_offset = int(m.group(12)), int(m.group(13))
+            offset = timedelta(seconds=hour_offset * 3600 + minute_offset * 60)
+            if sign == "-":
+                offset = -offset
+
+            tzinfo = timezone(
+                offset, "{}{}:{}".format(sign, m.group(12), m.group(13))
+            )
+
+        return datetime(
+            year, month, day, hour, minute, second, microsecond, tzinfo=tzinfo
+        )
     m = RFC_3339_DATE.match(string)
     if m:
         year = int(m.group(1))
@@ -94,11 +93,7 @@ def parse_rfc3339(string):  # type: (str) -> Union[datetime, date, time]
         hour = int(m.group(1))
         minute = int(m.group(2))
         second = int(m.group(3))
-        microsecond = 0
-
-        if m.group(4):
-            microsecond = int(("{:<06s}".format(m.group(5)))[:6])
-
+        microsecond = int(("{:<06s}".format(m.group(5)))[:6]) if m.group(4) else 0
         return time(hour, minute, second, microsecond)
 
     raise ValueError("Invalid RFC 339 string")
